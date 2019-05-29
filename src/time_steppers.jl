@@ -2,7 +2,7 @@
 
 import GPUifyLoops: @launch, @loop, @unroll, @synchronize
 
-using Oceananigans.Operators
+# using Oceananigans.Operators
 
 const Tx = 16 # CUDA threads per x-block
 const Ty = 16 # CUDA threads per y-block
