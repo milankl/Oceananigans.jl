@@ -119,12 +119,14 @@ import
     Adapt,
     GPUifyLoops
 
-const HAVE_CUDA = try
-    using CUDAdrv, CUDAnative, CuArrays
-    true
-catch
-    false
-end
+# const HAVE_CUDA = try
+#     using CUDAdrv, CUDAnative, CuArrays
+#     true
+# catch
+#     false
+# end
+
+const HAVE_CUDA = false
 
 macro hascuda(ex)
     return HAVE_CUDA ? :($(esc(ex))) : :(nothing)

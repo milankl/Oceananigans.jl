@@ -20,6 +20,7 @@ mutable struct NetCDFOutputWriter <: OutputWriter
     naming_scheme::Symbol
     compression::Int
     async::Bool
+    onefile::Bool
 end
 
 "A type for writing Binary output."
@@ -35,8 +36,8 @@ function Checkpointer(; dir=".", prefix="", frequency=1, padding=9)
 end
 
 function NetCDFOutputWriter(; dir=".", prefix="", frequency=1, padding=9,
-                              naming_scheme=:iteration, compression=3, async=false)
-    NetCDFOutputWriter(dir, prefix, frequency, padding, naming_scheme, compression, async)
+                              naming_scheme=:file_number, compression=3, async=false, onefile=false)
+    NetCDFOutputWriter(dir, prefix, frequency, padding, naming_scheme, compression, async, onefile)
 end
 
 "Return the filename extension for the `OutputWriter` filetype."
@@ -47,13 +48,19 @@ ext(fw::Checkpointer) = ".jld"
 filename(fw::Checkpointer, iteration) = fw.filename_prefix * "model_checkpoint_" * lpad(iteration, fw.padding, "0") * ext(fw)
 
 function filename(fw, name, iteration)
-    if fw.naming_scheme == :iteration
-        fw.filename_prefix * name * lpad(iteration, fw.padding, "0") * ext(fw)
-    elseif fw.naming_scheme == :file_number
-        file_num = Int(iteration / fw.output_frequency)
-        fw.filename_prefix * name * lpad(file_num, fw.padding, "0") * ext(fw)
+    if fw.onefile
+        # TODO check the existing file numbers in the folder
+        file_id = 0
+        fw.filename_prefix * name * lpad(file_id,fw.padding,"0") * ext(fw)
     else
-        throw(ArgumentError("Invalid naming scheme: $(fw.naming_scheme)"))
+        if fw.naming_scheme == :iteration
+            fw.filename_prefix * name * lpad(iteration, fw.padding, "0") * ext(fw)
+        elseif fw.naming_scheme == :file_number
+            file_num = Int(iteration / fw.output_frequency)
+            fw.filename_prefix * name * lpad(file_num, fw.padding, "0") * ext(fw)
+        else
+            throw(ArgumentError("Invalid naming scheme: $(fw.naming_scheme)"))
+        end
     end
 end
 
