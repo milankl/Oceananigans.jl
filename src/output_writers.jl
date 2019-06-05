@@ -154,6 +154,7 @@ function write_output(model::Model, fw::NetCDFOutputWriter)
         "xF" => collect(model.grid.xF),
         "yF" => collect(model.grid.yF),
         "zF" => collect(model.grid.zF),
+        "t" => collect(model.clock.timevec),
         "u" => Array(model.velocities.u.data),
         "v" => Array(model.velocities.v.data),
         "w" => Array(model.velocities.w.data),
@@ -163,78 +164,92 @@ function write_output(model::Model, fw::NetCDFOutputWriter)
 
     if fw.async
         # Execute asynchronously on worker 2.
-        i = model.clock.iteration
-        @async remotecall(write_output_netcdf, 2, fw, fields, i)
+        @async remotecall(write_output_netcdf, 2, fw, fields, model.clock.iteration)
     else
         write_output_netcdf(fw, fields, model.clock.iteration)
     end
-
     return nothing
 end
 
 function write_output_netcdf(fw::NetCDFOutputWriter, fields, iteration)
-    xC, yC, zC = fields["xC"], fields["yC"], fields["zC"]
-    xF, yF, zF = fields["xF"], fields["yF"], fields["zF"]
 
-    u, v, w = fields["u"], fields["v"], fields["w"]
-    T, S    = fields["T"], fields["S"]
+    if iteration == 0 || ~fw.onefile    # initialise for onefile or output each timestep as single file
+        xC, yC, zC = fields["xC"], fields["yC"], fields["zC"]
+        xF, yF, zF = fields["xF"], fields["yF"], fields["zF"]
+        t = fields["t"]
 
-    xC_attr = Dict("longname" => "Locations of the cell centers in the x-direction.", "units" => "m")
-    yC_attr = Dict("longname" => "Locations of the cell centers in the y-direction.", "units" => "m")
-    zC_attr = Dict("longname" => "Locations of the cell centers in the z-direction.", "units" => "m")
+        u, v, w = fields["u"], fields["v"], fields["w"]
+        T, S    = fields["T"], fields["S"]
 
-    xF_attr = Dict("longname" => "Locations of the cell faces in the x-direction.", "units" => "m")
-    yF_attr = Dict("longname" => "Locations of the cell faces in the y-direction.", "units" => "m")
-    zF_attr = Dict("longname" => "Locations of the cell faces in the z-direction.", "units" => "m")
+        xC_attr = Dict("longname" => "Locations of the cell centers in the x-direction.", "units" => "m")
+        yC_attr = Dict("longname" => "Locations of the cell centers in the y-direction.", "units" => "m")
+        zC_attr = Dict("longname" => "Locations of the cell centers in the z-direction.", "units" => "m")
 
-    u_attr = Dict("longname" => "Velocity in the x-direction", "units" => "m/s")
-    v_attr = Dict("longname" => "Velocity in the y-direction", "units" => "m/s")
-    w_attr = Dict("longname" => "Velocity in the z-direction", "units" => "m/s")
-    T_attr = Dict("longname" => "Temperature", "units" => "K")
-    S_attr = Dict("longname" => "Salinity", "units" => "g/kg")
+        xF_attr = Dict("longname" => "Locations of the cell faces in the x-direction.", "units" => "m")
+        yF_attr = Dict("longname" => "Locations of the cell faces in the y-direction.", "units" => "m")
+        zF_attr = Dict("longname" => "Locations of the cell faces in the z-direction.", "units" => "m")
 
-    filepath = joinpath(fw.dir, filename(fw, "", iteration))
+        t_attr = Dict("longname" => "time", "units" => "s")
 
-    if fw.async
-        println("[Worker $(Distributed.myid()): NetCDFOutputWriter] Writing fields to disk: $filepath")
-    else
-        println("[NetCDFOutputWriter] Writing fields to disk: $filepath")
+        u_attr = Dict("longname" => "Velocity in the x-direction", "units" => "m/s")
+        v_attr = Dict("longname" => "Velocity in the y-direction", "units" => "m/s")
+        w_attr = Dict("longname" => "Velocity in the z-direction", "units" => "m/s")
+        T_attr = Dict("longname" => "Temperature", "units" => "K")
+        S_attr = Dict("longname" => "Salinity", "units" => "g/kg")
+
+        filepath = joinpath(fw.dir, filename(fw, "", iteration))
+
+        if fw.async
+            println("[Worker $(Distributed.myid()): NetCDFOutputWriter] Writing fields to disk: $filepath")
+        else
+            println("[NetCDFOutputWriter] Writing fields to disk: $filepath")
+        end
+
+        isfile(filepath) && rm(filepath)
+
+        nccreate(filepath, "u", "xF", xC, xC_attr,
+                                "yC", yC, yC_attr,
+                                "zC", zC, zC_attr,
+                                atts=u_attr, compress=fw.compression)
+
+        nccreate(filepath, "v", "xC", xC, xC_attr,
+                                "yF", yC, yC_attr,
+                                "zC", zC, zC_attr,
+                                atts=v_attr, compress=fw.compression)
+
+        nccreate(filepath, "w", "xC", xC, xC_attr,
+                                "yC", yC, yC_attr,
+                                "zF", zC, zC_attr,
+                                atts=w_attr, compress=fw.compression)
+
+        nccreate(filepath, "T", "xC", xC, xC_attr,
+                                "yC", yC, yC_attr,
+                                "zC", zC, zC_attr,
+                                atts=T_attr, compress=fw.compression)
+
+        nccreate(filepath, "S", "xC", xC, xC_attr,
+                                "yC", yC, yC_attr,
+                                "zC", zC, zC_attr,
+                                atts=S_attr, compress=fw.compression)
+
+        ncwrite(u, filepath, "u")
+        ncwrite(v, filepath, "v")
+        ncwrite(w, filepath, "w")
+        ncwrite(T, filepath, "T")
+        ncwrite(S, filepath, "S")
+
+        if fw.onefile
+            #TODO
+            # store ncfiles in fw and keep open
+        else
+            ncclose(filepath)
+        end
+
+    else # onefile output: append to existing file
+
+
+
     end
-
-    isfile(filepath) && rm(filepath)
-
-    nccreate(filepath, "u", "xF", xC, xC_attr,
-                            "yC", yC, yC_attr,
-                            "zC", zC, zC_attr,
-                            atts=u_attr, compress=fw.compression)
-
-    nccreate(filepath, "v", "xC", xC, xC_attr,
-                            "yF", yC, yC_attr,
-                            "zC", zC, zC_attr,
-                            atts=v_attr, compress=fw.compression)
-
-    nccreate(filepath, "w", "xC", xC, xC_attr,
-                            "yC", yC, yC_attr,
-                            "zF", zC, zC_attr,
-                            atts=w_attr, compress=fw.compression)
-
-    nccreate(filepath, "T", "xC", xC, xC_attr,
-                            "yC", yC, yC_attr,
-                            "zC", zC, zC_attr,
-                            atts=T_attr, compress=fw.compression)
-
-    nccreate(filepath, "S", "xC", xC, xC_attr,
-                            "yC", yC, yC_attr,
-                            "zC", zC, zC_attr,
-                            atts=S_attr, compress=fw.compression)
-
-    ncwrite(u, filepath, "u")
-    ncwrite(v, filepath, "v")
-    ncwrite(w, filepath, "w")
-    ncwrite(T, filepath, "T")
-    ncwrite(S, filepath, "S")
-
-    ncclose(filepath)
 
     return nothing
 end
@@ -242,7 +257,14 @@ end
 function read_output(fw::NetCDFOutputWriter, field_name, iter)
     filepath = joinpath(fw.dir, filename(fw, "", iter))
     println("[NetCDFOutputWriter] Reading fields from disk: $filepath")
-    field_data = ncread(filepath, field_name)
+
+    if fw.onefile
+        #TODO read only timestep iter
+        field_data = ncread(filepath, field_name)
+    else
+        field_data = ncread(filepath, field_name)
+    end
+
     ncclose(filepath)
     return field_data
 end
