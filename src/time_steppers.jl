@@ -13,10 +13,13 @@ const Ty = 16 # CUDA threads per y-block
 Step forward `model` `Nt` time steps using a second-order Adams-Bashforth
 method with step size `Δt`.
 """
-function time_step!(model::Model{A}, Nt, Δt) where A <: Architecture
+function time_step!(model::Model{A}) where A <: Architecture
     clock = model.clock
-    model_start_time = clock.time
-    model_end_time = model_start_time + Nt*Δt
+    Nt = model.clock.Nt
+    Δt = model.clock.Δt
+
+    # model_start_time = clock.time
+    # model_end_time = model_start_time + Nt*Δt
 
     if clock.iteration == 0
         for output_writer in model.output_writers
@@ -36,7 +39,6 @@ function time_step!(model::Model{A}, Nt, Δt) where A <: Architecture
     grid = model.grid
     cfg = model.configuration
     bcs = model.boundary_conditions
-    clock = model.clock
 
     G = model.G
     Gp = model.Gp
@@ -102,7 +104,7 @@ function time_step!(model::Model{A}, Nt, Δt) where A <: Architecture
     return nothing
 end
 
-time_step!(model; Nt, Δt) = time_step!(model, Nt, Δt)
+# time_step!(model; Nt, Δt) = time_step!(model, Nt, Δt)
 
 """Store previous source terms before updating them."""
 function store_previous_source_terms!(grid::Grid, Gu, Gv, Gw, GT, GS, Gpu, Gpv, Gpw, GpT, GpS)

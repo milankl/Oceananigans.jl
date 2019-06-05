@@ -42,6 +42,9 @@ function Model(;
     # Model resolution and domain size
              N,
              L,
+    # time step
+             Nt,
+             Δt,
     # Molecular parameters
              ν = 1.05e-6, νh = ν, νv = ν,
              κ = 1.43e-7, κh = κ, κv = κ,
@@ -67,7 +70,7 @@ function Model(;
     # Initialize model basics.
     configuration = ModelConfiguration(κh, κv, νh, νv)
              grid = RegularCartesianGrid(float_type, N, L)
-            clock = Clock{float_type}(start_time, iteration)
+            clock = Clock(float_type,start_time,iteration, Nt, Δt)
 
     # Initialize fields, including source terms and temporary variables.
       velocities = VelocityFields(arch, grid)
