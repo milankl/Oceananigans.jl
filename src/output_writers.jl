@@ -154,7 +154,7 @@ function write_output(model::Model, fw::NetCDFOutputWriter)
         "xF" => collect(model.grid.xF),
         "yF" => collect(model.grid.yF),
         "zF" => collect(model.grid.zF),
-        "t" => collect(model.clock.timevec),
+        "t" => collect(model.clock.timevec[1:fw.output_frequency:end]),
         "u" => Array(model.velocities.u.data),
         "v" => Array(model.velocities.v.data),
         "w" => Array(model.velocities.w.data),
@@ -173,13 +173,22 @@ end
 
 function write_output_netcdf(fw::NetCDFOutputWriter, fields, iteration)
 
-    if iteration == 0 || ~fw.onefile    # initialise for onefile or output each timestep as single file
-        xC, yC, zC = fields["xC"], fields["yC"], fields["zC"]
-        xF, yF, zF = fields["xF"], fields["yF"], fields["zF"]
-        t = fields["t"]
+    xC, yC, zC = fields["xC"], fields["yC"], fields["zC"]
+    xF, yF, zF = fields["xF"], fields["yF"], fields["zF"]
+    t = fields["t"]
 
-        u, v, w = fields["u"], fields["v"], fields["w"]
-        T, S    = fields["T"], fields["S"]
+    u, v, w = fields["u"], fields["v"], fields["w"]
+    T, S    = fields["T"], fields["S"]
+
+    filepath = joinpath(fw.dir, filename(fw, "", iteration))
+
+    if fw.async
+        println("[Worker $(Distributed.myid()): NetCDFOutputWriter] Writing fields to disk: $filepath")
+    else
+        println("[NetCDFOutputWriter] Writing fields to disk: $filepath, $iteration")
+    end
+
+    if iteration == 0 || ~fw.onefile    # initialise for onefile or output each timestep as single file
 
         xC_attr = Dict("longname" => "Locations of the cell centers in the x-direction.", "units" => "m")
         yC_attr = Dict("longname" => "Locations of the cell centers in the y-direction.", "units" => "m")
@@ -197,46 +206,43 @@ function write_output_netcdf(fw::NetCDFOutputWriter, fields, iteration)
         T_attr = Dict("longname" => "Temperature", "units" => "K")
         S_attr = Dict("longname" => "Salinity", "units" => "g/kg")
 
-        filepath = joinpath(fw.dir, filename(fw, "", iteration))
-
-        if fw.async
-            println("[Worker $(Distributed.myid()): NetCDFOutputWriter] Writing fields to disk: $filepath")
-        else
-            println("[NetCDFOutputWriter] Writing fields to disk: $filepath")
-        end
-
         isfile(filepath) && rm(filepath)
 
         nccreate(filepath, "u", "xF", xC, xC_attr,
                                 "yC", yC, yC_attr,
                                 "zC", zC, zC_attr,
+                                "t", t, t_attr,
                                 atts=u_attr, compress=fw.compression)
 
         nccreate(filepath, "v", "xC", xC, xC_attr,
                                 "yF", yC, yC_attr,
                                 "zC", zC, zC_attr,
+                                "t", t, t_attr,
                                 atts=v_attr, compress=fw.compression)
 
         nccreate(filepath, "w", "xC", xC, xC_attr,
                                 "yC", yC, yC_attr,
                                 "zF", zC, zC_attr,
+                                "t", t, t_attr,
                                 atts=w_attr, compress=fw.compression)
 
         nccreate(filepath, "T", "xC", xC, xC_attr,
                                 "yC", yC, yC_attr,
                                 "zC", zC, zC_attr,
+                                "t", t, t_attr,
                                 atts=T_attr, compress=fw.compression)
 
         nccreate(filepath, "S", "xC", xC, xC_attr,
                                 "yC", yC, yC_attr,
                                 "zC", zC, zC_attr,
+                                "t", t, t_attr,
                                 atts=S_attr, compress=fw.compression)
 
-        ncwrite(u, filepath, "u")
-        ncwrite(v, filepath, "v")
-        ncwrite(w, filepath, "w")
-        ncwrite(T, filepath, "T")
-        ncwrite(S, filepath, "S")
+        ncwrite(u, filepath, "u", start=[1,1,1,1], count=[-1,-1,-1,1])
+        ncwrite(v, filepath, "v", start=[1,1,1,1], count=[-1,-1,-1,1])
+        ncwrite(w, filepath, "w", start=[1,1,1,1], count=[-1,-1,-1,1])
+        ncwrite(T, filepath, "T", start=[1,1,1,1], count=[-1,-1,-1,1])
+        ncwrite(S, filepath, "S", start=[1,1,1,1], count=[-1,-1,-1,1])
 
         if fw.onefile
             #TODO
@@ -246,9 +252,13 @@ function write_output_netcdf(fw::NetCDFOutputWriter, fields, iteration)
         end
 
     else # onefile output: append to existing file
-
-
-
+        i = iteration
+        freq = fw.output_frequency
+        ncwrite(u, filepath, "u", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
+        ncwrite(v, filepath, "v", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
+        ncwrite(w, filepath, "w", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
+        ncwrite(T, filepath, "T", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
+        ncwrite(S, filepath, "S", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
     end
 
     return nothing
