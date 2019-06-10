@@ -7,6 +7,6 @@ mutable struct Clock{T<:Number}
 end
 
 function Clock(T::DataType,start_time::Number,iteration::Int,Nt::Int,Δt::Number)
-    timevec = Array{T}(start_time:Δt:Nt)
+    timevec = Array{T}(start_time:Δt:Δt*Nt)
     Clock{T}(start_time, timevec, iteration, Nt, Δt)
 end

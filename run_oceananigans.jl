@@ -22,7 +22,7 @@ model.tracers.T.data .= 282.99 .+ 2 .* reshape(hot_bubble_perturbation, (Nx, Ny,
 
 # Add a NetCDF output writer that saves NetCDF files to the current directory
 # "." with a filename prefix of "thermal_bubble_2d_" every 10 iterations.
-nc_writer = NetCDFOutputWriter(dir="data/", prefix="thermal_bubble_2d_", frequency=1000)
+nc_writer = NetCDFOutputWriter(dir="data/", prefix="thermal_bubble_2d_", frequency=300, onefile=false)
 push!(model.output_writers, nc_writer)
 
 time_step!(model)
