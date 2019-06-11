@@ -21,6 +21,8 @@ mutable struct NetCDFOutputWriter <: OutputWriter
     compression::Int
     async::Bool
     onefile::Bool
+    nctype::Int     # NC_FLOAT (32bit), NC_DOUBLE (64bit) are denoted with integers ?!
+    file_id::Int
 end
 
 "A type for writing Binary output."
@@ -35,9 +37,10 @@ function Checkpointer(; dir=".", prefix="", frequency=1, padding=9)
     Checkpointer(dir, prefix, frequency, padding)
 end
 
-function NetCDFOutputWriter(; dir=".", prefix="", frequency=1, padding=9,
-                              naming_scheme=:file_number, compression=3, async=false, onefile=false)
-    NetCDFOutputWriter(dir, prefix, frequency, padding, naming_scheme, compression, async, onefile)
+function NetCDFOutputWriter(; dir=".", prefix="", frequency=1, padding=4,
+                              naming_scheme=:file_number, compression=3, async=false,
+                              onefile=false, nctype=NC_FLOAT, file_id=0)
+    NetCDFOutputWriter(dir, prefix, frequency, padding, naming_scheme, compression, async, onefile, nctype, file_id)
 end
 
 "Return the filename extension for the `OutputWriter` filetype."
@@ -49,9 +52,13 @@ filename(fw::Checkpointer, iteration) = fw.filename_prefix * "model_checkpoint_"
 
 function filename(fw, name, iteration)
     if fw.onefile
-        # TODO check the existing file numbers in the folder
-        file_id = 0
-        fw.filename_prefix * name * lpad(file_id,fw.padding,"0") * ext(fw)
+        if iteration == 0
+            runlist = filter(x->startswith(x,fw.filename_prefix),readdir(fw.dir))
+            if length(runlist) > 0 # else use default value 0 for fw.file_id
+                fw.file_id = maximum([parse(Int,id[end-6:end-3]) for id in runlist])+1
+            end
+        end
+        fw.filename_prefix * name * lpad(fw.file_id,fw.padding,"0") * ext(fw)
     else
         if fw.naming_scheme == :iteration
             fw.filename_prefix * name * lpad(iteration, fw.padding, "0") * ext(fw)
@@ -182,12 +189,6 @@ function write_output_netcdf(fw::NetCDFOutputWriter, fields, iteration)
 
     filepath = joinpath(fw.dir, filename(fw, "", iteration))
 
-    if fw.async
-        println("[Worker $(Distributed.myid()): NetCDFOutputWriter] Writing fields to disk: $filepath")
-    else
-        println("[NetCDFOutputWriter] Writing fields to disk: $filepath, $iteration")
-    end
-
     if iteration == 0 || ~fw.onefile    # initialise for onefile or output each timestep as single file
 
         xC_attr = Dict("longname" => "Locations of the cell centers in the x-direction.", "units" => "m")
@@ -208,41 +209,52 @@ function write_output_netcdf(fw::NetCDFOutputWriter, fields, iteration)
 
         isfile(filepath) && rm(filepath)
 
-        nccreate(filepath, "u", "xF", xC, xC_attr,
-                                "yC", yC, yC_attr,
-                                "zC", zC, zC_attr,
-                                "t", t, t_attr,
-                                atts=u_attr, compress=fw.compression)
+        if fw.async
+            println("[Worker $(Distributed.myid()): NetCDFOutputWriter] Writing fields to disk: $filepath")
+        else
+            println("[NetCDFOutputWriter] Writing fields to disk: $filepath")
+        end
 
-        nccreate(filepath, "v", "xC", xC, xC_attr,
-                                "yF", yC, yC_attr,
-                                "zC", zC, zC_attr,
-                                "t", t, t_attr,
-                                atts=v_attr, compress=fw.compression)
-
-        nccreate(filepath, "w", "xC", xC, xC_attr,
-                                "yC", yC, yC_attr,
-                                "zF", zC, zC_attr,
-                                "t", t, t_attr,
-                                atts=w_attr, compress=fw.compression)
+        # nccreate(filepath, "u", "xF", xC, xC_attr,
+        #                         "yC", yC, yC_attr,
+        #                         "zC", zC, zC_attr,
+        #                         "t", t, t_attr,
+        #                         atts=u_attr, compress=fw.compression,
+        #                         t=fw.nctype)
+        #
+        # nccreate(filepath, "v", "xC", xC, xC_attr,
+        #                         "yF", yC, yC_attr,
+        #                         "zC", zC, zC_attr,
+        #                         "t", t, t_attr,
+        #                         atts=v_attr, compress=fw.compression,
+        #                         t=fw.nctype)
+        #
+        # nccreate(filepath, "w", "xC", xC, xC_attr,
+        #                         "yC", yC, yC_attr,
+        #                         "zF", zC, zC_attr,
+        #                         "t", t, t_attr,
+        #                         atts=w_attr, compress=fw.compression,
+        #                         t=fw.nctype)
 
         nccreate(filepath, "T", "xC", xC, xC_attr,
                                 "yC", yC, yC_attr,
                                 "zC", zC, zC_attr,
                                 "t", t, t_attr,
-                                atts=T_attr, compress=fw.compression)
+                                atts=T_attr, compress=fw.compression,
+                                t=fw.nctype)
 
-        nccreate(filepath, "S", "xC", xC, xC_attr,
-                                "yC", yC, yC_attr,
-                                "zC", zC, zC_attr,
-                                "t", t, t_attr,
-                                atts=S_attr, compress=fw.compression)
+        # nccreate(filepath, "S", "xC", xC, xC_attr,
+        #                         "yC", yC, yC_attr,
+        #                         "zC", zC, zC_attr,
+        #                         "t", t, t_attr,
+        #                         atts=S_attr, compress=fw.compression,
+        #                         t=fw.nctype)
 
-        ncwrite(u, filepath, "u", start=[1,1,1,1], count=[-1,-1,-1,1])
-        ncwrite(v, filepath, "v", start=[1,1,1,1], count=[-1,-1,-1,1])
-        ncwrite(w, filepath, "w", start=[1,1,1,1], count=[-1,-1,-1,1])
+        # ncwrite(u, filepath, "u", start=[1,1,1,1], count=[-1,-1,-1,1])
+        # ncwrite(v, filepath, "v", start=[1,1,1,1], count=[-1,-1,-1,1])
+        # ncwrite(w, filepath, "w", start=[1,1,1,1], count=[-1,-1,-1,1])
         ncwrite(T, filepath, "T", start=[1,1,1,1], count=[-1,-1,-1,1])
-        ncwrite(S, filepath, "S", start=[1,1,1,1], count=[-1,-1,-1,1])
+        # ncwrite(S, filepath, "S", start=[1,1,1,1], count=[-1,-1,-1,1])
 
         if fw.onefile
             #TODO
@@ -254,11 +266,11 @@ function write_output_netcdf(fw::NetCDFOutputWriter, fields, iteration)
     else # onefile output: append to existing file
         i = iteration
         freq = fw.output_frequency
-        ncwrite(u, filepath, "u", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
-        ncwrite(v, filepath, "v", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
-        ncwrite(w, filepath, "w", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
+        # ncwrite(u, filepath, "u", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
+        # ncwrite(v, filepath, "v", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
+        # ncwrite(w, filepath, "w", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
         ncwrite(T, filepath, "T", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
-        ncwrite(S, filepath, "S", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
+        # ncwrite(S, filepath, "S", start=[1,1,1,Int(i/freq)+1], count=[-1,-1,-1,1])
     end
 
     return nothing

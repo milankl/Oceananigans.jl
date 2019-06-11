@@ -3,7 +3,7 @@ using .Oceananigans
 
 # We'll set up a 2D model with an xz-slice so there's only 1 grid point in y.
 Nx, Ny, Nz = 128, 1, 128    # Number of grid points in each dimension.
-Lx, Ly, Lz = 1000, 1, 1000  # Domain size (meters).
+Lx, Ly, Lz = 2000, 1, 2000  # Domain size (meters).
 Nt, Δt = 5000, 10           # Number of time steps, time step size (seconds).
 
 # Set up the model and use an artificially high viscosity ν and diffusivity κ.
@@ -22,7 +22,7 @@ model.tracers.T.data .= 282.99 .+ 2 .* reshape(hot_bubble_perturbation, (Nx, Ny,
 
 # Add a NetCDF output writer that saves NetCDF files to the current directory
 # "." with a filename prefix of "thermal_bubble_2d_" every 10 iterations.
-nc_writer = NetCDFOutputWriter(dir="data/", prefix="thermal_bubble_2d_", frequency=300, onefile=false)
+nc_writer = NetCDFOutputWriter(dir="data/", prefix="thermalbubble", frequency=20, onefile=true)
 push!(model.output_writers, nc_writer)
 
 time_step!(model)

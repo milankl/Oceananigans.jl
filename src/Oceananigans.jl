@@ -106,7 +106,8 @@ export
 using
     Statistics,
     LinearAlgebra,
-    Printf
+    Printf,
+    Dates
 
 # Third-party modules
 using
