@@ -68,7 +68,7 @@ function time_step!(model::Model{A}) where A <: Architecture
 
     tb = (threads=(Tx, Ty), blocks=(Bx, By, Bz))
 
-    for n in 1:Nt
+    for i in 1:Nt
         χ = ifelse(model.clock.iteration == 0, -0.5, 0.125) # Adams-Bashforth (AB2) parameter.
 
         @launch device(arch) threads=(Tx, Ty) blocks=(Bx, By, Bz) store_previous_source_terms!(grid, Gⁿ..., G⁻...)
@@ -99,6 +99,8 @@ function time_step!(model::Model{A}) where A <: Architecture
         for output_writer in model.output_writers
             (clock.iteration % output_writer.output_frequency) == 0 && write_output(model, output_writer)
         end
+
+        feedback(clock)
     end
 
     return nothing
