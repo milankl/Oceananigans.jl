@@ -103,6 +103,8 @@ function time_step!(model::Model{A}) where A <: Architecture
         feedback(clock)
     end
 
+    ncclose()
+
     return nothing
 end
 
